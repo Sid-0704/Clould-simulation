@@ -1,7 +1,33 @@
-This project will simulate how CPU and memory resources are allocated across multiple Virtual Machines (VMs) under varying workloads, ensuring:
+Cloud Scheduling Simulation
 
-    - Efficient utilization of resources
-    - Load balancing across VMs
-    - Minimal overload or underutilization
+This project simulates CPU and memory allocation across multiple Virtual Machines (VMs) with two scheduling strategies:
+
+- SJF (Shortest Job First)
+- Priority Scheduling
+
+The program now supports both:
+
+- GUI mode (Windows window with live VM usage bars and events)
+- Console mode (terminal output)
+
+Build (Windows, MinGW GCC)
+
+
+```bash
+gcc main.c -o cloud_sim.exe -lgdi32
+```
+
+Run
+
+- GUI mode (default):
+.\cloud_sim.exe
+
+- Console mode:
+
+```bash
+cloud_sim.exe --console
+```
+
+
 
     

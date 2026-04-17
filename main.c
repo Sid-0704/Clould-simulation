@@ -1,6 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
+#include <stdarg.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define MAX_VMS 4
 #define MAX_TASKS 10
@@ -24,11 +30,46 @@ typedef struct {
     int priority;
 } Task;
 
+typedef struct {
+    int step;
+    int algorithm; /* 0 = SJF, 1 = Priority */
+    Task tasks[MAX_TASKS];
+    int task_count;
+    char events[2048];
+} StepResult;
+
 // -----------------------------
 // Global Variables
 // -----------------------------
 VM vms[MAX_VMS];
 int vm_count = MAX_VMS;
+
+#ifdef _WIN32
+static StepResult g_step_result;
+static int g_step_index = 0;
+static int g_finished = 0;
+#endif
+
+// -----------------------------
+// Utility: Append Formatted Text
+// -----------------------------
+void appendf(char *buffer, size_t buffer_size, const char *fmt, ...) {
+    size_t len;
+    va_list args;
+
+    if (buffer == NULL || buffer_size == 0) {
+        return;
+    }
+
+    len = strlen(buffer);
+    if (len >= buffer_size - 1) {
+        return;
+    }
+
+    va_start(args, fmt);
+    vsnprintf(buffer + len, buffer_size - len, fmt, args);
+    va_end(args);
+}
 
 // -----------------------------
 // Initialize VMs
@@ -66,11 +107,11 @@ int can_allocate(VM *vm, Task t) {
 // -----------------------------
 // Allocate Task
 // -----------------------------
-void allocate_task(VM *vm, Task t) {
+void allocate_task(VM *vm, Task t, char *events, size_t events_size) {
     vm->used_cpu += t.cpu_req;
     vm->used_mem += t.mem_req;
 
-    printf("Task %d allocated to VM %d\n", t.id, vm->id);
+    appendf(events, events_size, "Task %d allocated to VM %d\n", t.id, vm->id);
 }
 
 // -----------------------------
@@ -99,7 +140,7 @@ int task_size(Task t) {
     return t.cpu_req + t.mem_req;
 }
 
-void sjf_schedule(Task tasks[], int n) {
+void sjf_schedule(Task tasks[], int n, char *events, size_t events_size) {
     // Sort tasks by smallest size
     for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
@@ -111,23 +152,23 @@ void sjf_schedule(Task tasks[], int n) {
         }
     }
 
-    printf("\n--- SJF Scheduling ---\n");
+    appendf(events, events_size, "--- SJF Scheduling ---\n");
 
     for (int i = 0; i < n; i++) {
         Task t = tasks[i];
         int vm_index = find_best_vm(t);
 
         if (vm_index != -1)
-            allocate_task(&vms[vm_index], t);
+            allocate_task(&vms[vm_index], t, events, events_size);
         else
-            printf("Task %d rejected (SJF)\n", t.id);
+            appendf(events, events_size, "Task %d rejected (SJF)\n", t.id);
     }
 }
 
 // -----------------------------
 // Priority Scheduling
 // -----------------------------
-void priority_schedule(Task tasks[], int n) {
+void priority_schedule(Task tasks[], int n, char *events, size_t events_size) {
     // Sort by highest priority first
     for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
@@ -139,16 +180,16 @@ void priority_schedule(Task tasks[], int n) {
         }
     }
 
-    printf("\n--- Priority Scheduling ---\n");
+    appendf(events, events_size, "--- Priority Scheduling ---\n");
 
     for (int i = 0; i < n; i++) {
         Task t = tasks[i];
         int vm_index = find_best_vm(t);
 
         if (vm_index != -1)
-            allocate_task(&vms[vm_index], t);
+            allocate_task(&vms[vm_index], t, events, events_size);
         else
-            printf("Task %d rejected (Priority)\n", t.id);
+            appendf(events, events_size, "Task %d rejected (Priority)\n", t.id);
     }
 }
 
@@ -182,41 +223,242 @@ void print_status() {
 }
 
 // -----------------------------
-// Main
+// Simulate One Step
 // -----------------------------
-int main() {
-    srand(time(NULL));
-    init_vms();
+void simulate_step(int step, StepResult *result) {
+    Task sched_tasks[MAX_TASKS];
+
+    result->step = step;
+    result->algorithm = (step % 2 == 0) ? 0 : 1;
+    result->task_count = rand() % 5 + 1;
+    result->events[0] = '\0';
+
+    for (int i = 0; i < result->task_count; i++) {
+        result->tasks[i] = generate_task(step * 10 + i);
+        sched_tasks[i] = result->tasks[i];
+    }
+
+    if (result->algorithm == 0)
+        sjf_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
+    else
+        priority_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
+
+    release_resources();
+}
+
+// -----------------------------
+// Console Runner
+// -----------------------------
+void run_console_simulation() {
+    StepResult result;
 
     printf("=== Cloud Scheduling Simulation (SJF + Priority) ===\n");
 
     for (int t = 0; t < SIMULATION_TIME; t++) {
+        simulate_step(t, &result);
+
         printf("\n=============================\n");
         printf("Time Step %d\n", t);
 
-        int task_count = rand() % 5 + 1;
-        Task tasks[MAX_TASKS];
-
-        // Generate tasks
-        for (int i = 0; i < task_count; i++) {
-            tasks[i] = generate_task(t * 10 + i);
+        for (int i = 0; i < result.task_count; i++) {
             printf("Task %d -> CPU:%d MEM:%d Priority:%d\n",
-                   tasks[i].id,
-                   tasks[i].cpu_req,
-                   tasks[i].mem_req,
-                   tasks[i].priority);
+                   result.tasks[i].id,
+                   result.tasks[i].cpu_req,
+                   result.tasks[i].mem_req,
+                   result.tasks[i].priority);
         }
 
-        // Choose algorithm
-        if (t % 2 == 0)
-            sjf_schedule(tasks, task_count);
-        else
-            priority_schedule(tasks, task_count);
-
-        release_resources();
+        printf("\n%s", result.events);
         print_status();
     }
 
     printf("\nSimulation Finished\n");
+}
+
+#ifdef _WIN32
+// -----------------------------
+// GUI Drawing Helpers
+// -----------------------------
+void draw_bar(HDC hdc, int x, int y, int w, int h, int used, int total, COLORREF color) {
+    RECT frame = {x, y, x + w, y + h};
+    RECT fill;
+    HBRUSH fill_brush;
+
+    Rectangle(hdc, frame.left, frame.top, frame.right, frame.bottom);
+
+    if (total <= 0) {
+        return;
+    }
+
+    fill = frame;
+    fill.right = x + (w * used) / total;
+    if (fill.right < fill.left) {
+        fill.right = fill.left;
+    }
+
+    fill_brush = CreateSolidBrush(color);
+    FillRect(hdc, &fill, fill_brush);
+    DeleteObject(fill_brush);
+}
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_CREATE:
+            g_step_index = 0;
+            g_finished = 0;
+            simulate_step(g_step_index, &g_step_result);
+            SetTimer(hwnd, 1, 1200, NULL);
+            return 0;
+
+        case WM_TIMER:
+            if (!g_finished) {
+                g_step_index++;
+                if (g_step_index < SIMULATION_TIME) {
+                    simulate_step(g_step_index, &g_step_result);
+                } else {
+                    g_finished = 1;
+                    KillTimer(hwnd, 1);
+                }
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            char line[256];
+            RECT events_rect;
+            int y = 12;
+
+            SetBkMode(hdc, TRANSPARENT);
+            TextOutA(hdc, 12, y, "Cloud Scheduling Simulation (GUI)", 33);
+            y += 26;
+
+            if (g_finished) {
+                TextOutA(hdc, 12, y, "Simulation Finished", 19);
+                y += 24;
+            } else {
+                snprintf(line, sizeof(line), "Time Step: %d / %d", g_step_result.step + 1, SIMULATION_TIME);
+                TextOutA(hdc, 12, y, line, (int)strlen(line));
+                y += 20;
+
+                if (g_step_result.algorithm == 0)
+                    TextOutA(hdc, 12, y, "Algorithm: SJF", 14);
+                else
+                    TextOutA(hdc, 12, y, "Algorithm: Priority", 19);
+
+                y += 24;
+                TextOutA(hdc, 12, y, "Generated Tasks:", 16);
+                y += 20;
+
+                for (int i = 0; i < g_step_result.task_count; i++) {
+                    snprintf(line, sizeof(line), "Task %d -> CPU:%d MEM:%d Priority:%d",
+                             g_step_result.tasks[i].id,
+                             g_step_result.tasks[i].cpu_req,
+                             g_step_result.tasks[i].mem_req,
+                             g_step_result.tasks[i].priority);
+                    TextOutA(hdc, 20, y, line, (int)strlen(line));
+                    y += 18;
+                }
+                y += 8;
+            }
+
+            TextOutA(hdc, 12, y, "VM Utilization:", 15);
+            y += 20;
+
+            for (int i = 0; i < vm_count; i++) {
+                snprintf(line, sizeof(line), "VM %d CPU %d/%d", vms[i].id, vms[i].used_cpu, vms[i].total_cpu);
+                TextOutA(hdc, 20, y, line, (int)strlen(line));
+                draw_bar(hdc, 170, y - 2, 180, 14, vms[i].used_cpu, vms[i].total_cpu, RGB(80, 160, 220));
+                y += 20;
+
+                snprintf(line, sizeof(line), "VM %d MEM %d/%d", vms[i].id, vms[i].used_mem, vms[i].total_mem);
+                TextOutA(hdc, 20, y, line, (int)strlen(line));
+                draw_bar(hdc, 170, y - 2, 180, 14, vms[i].used_mem, vms[i].total_mem, RGB(90, 190, 110));
+                y += 26;
+            }
+
+            y += 6;
+            TextOutA(hdc, 12, y, "Last Events:", 12);
+            y += 18;
+            events_rect.left = 12;
+            events_rect.top = y;
+            events_rect.right = 760;
+            events_rect.bottom = 560;
+            DrawTextA(hdc, g_step_result.events, -1, &events_rect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+    }
+
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+int run_gui_simulation(HINSTANCE hInstance, int nCmdShow) {
+    const char CLASS_NAME[] = "CloudSimWindowClass";
+    WNDCLASSA wc = {0};
+    HWND hwnd;
+    MSG msg;
+
+    wc.lpfnWndProc = WindowProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = CLASS_NAME;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+
+    RegisterClassA(&wc);
+
+    hwnd = CreateWindowExA(
+        0,
+        CLASS_NAME,
+        "Cloud Simulation GUI",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, 820, 640,
+        NULL,
+        NULL,
+        hInstance,
+        NULL
+    );
+
+    if (hwnd == NULL) {
+        return 1;
+    }
+
+    ShowWindow(hwnd, nCmdShow);
+    UpdateWindow(hwnd);
+
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    return (int)msg.wParam;
+}
+#endif
+
+// -----------------------------
+// Main
+// -----------------------------
+int main(int argc, char *argv[]) {
+    srand(time(NULL));
+    init_vms();
+
+#ifdef _WIN32
+    if (argc > 1 && strcmp(argv[1], "--console") == 0) {
+        run_console_simulation();
+        return 0;
+    }
+
+    return run_gui_simulation(GetModuleHandle(NULL), SW_SHOWDEFAULT);
+#else
+    (void)argc;
+    (void)argv;
+    run_console_simulation();
     return 0;
+#endif
 }
