@@ -179,11 +179,11 @@ void print_status() {
 // -----------------------------
 // Simulate One Step
 // -----------------------------
-void simulate_step(int step, StepResult *result) {
+void simulate_step(int step, SchedulingAlgorithm algorithm, StepResult *result) {
     Task sched_tasks[MAX_TASKS];
 
     result->step = step;
-    result->algorithm = (step % 2 == 0) ? 0 : 1;
+    result->algorithm = algorithm;
     result->task_count = rand() % 5 + 1;
     result->events[0] = '\0';
 
@@ -192,7 +192,7 @@ void simulate_step(int step, StepResult *result) {
         sched_tasks[i] = result->tasks[i];
     }
 
-    if (result->algorithm == 0)
+    if (result->algorithm == ALG_SJF)
         sjf_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
     else
         priority_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
@@ -203,13 +203,14 @@ void simulate_step(int step, StepResult *result) {
 // -----------------------------
 // Console Runner
 // -----------------------------
-void run_console_simulation() {
+void run_console_simulation(SchedulingAlgorithm algorithm) {
     StepResult result;
+    const char *algorithm_name = (algorithm == ALG_SJF) ? "SJF" : "Priority";
 
-    printf("=== Cloud Scheduling Simulation (SJF + Priority) ===\n");
+    printf("=== Cloud Scheduling Simulation (%s) ===\n", algorithm_name);
 
     for (int t = 0; t < SIMULATION_TIME; t++) {
-        simulate_step(t, &result);
+        simulate_step(t, algorithm, &result);
 
         printf("\n=============================\n");
         printf("Time Step %d\n", t);

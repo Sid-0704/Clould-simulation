@@ -30,6 +30,11 @@ typedef struct {
     char events[2048];
 } StepResult;
 
+typedef enum {
+    ALG_SJF = 0,
+    ALG_PRIORITY = 1
+} SchedulingAlgorithm;
+
 extern VM vms[MAX_VMS];
 extern int vm_count;
 
@@ -43,7 +48,7 @@ void sjf_schedule(Task tasks[], int n, char *events, size_t events_size);
 void priority_schedule(Task tasks[], int n, char *events, size_t events_size);
 void release_resources();
 void print_status();
-void simulate_step(int step, StepResult *result);
-void run_console_simulation();
+void simulate_step(int step, SchedulingAlgorithm algorithm, StepResult *result);
+void run_console_simulation(SchedulingAlgorithm algorithm);
 
 #endif

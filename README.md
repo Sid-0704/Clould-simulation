@@ -10,6 +10,13 @@ The program now supports both:
 - GUI mode (Windows window with live VM usage bars and events)
 - Console mode (terminal output)
 
+You can choose the scheduling algorithm in the GUI with buttons before the simulation starts.
+
+You can also choose at startup in console mode:
+
+- SJF (default)
+- Priority Scheduling
+
 Project Structure
 
 - main.c: GUI window handling and application startup logic
@@ -26,10 +33,18 @@ Run
 - GUI mode (default):
 .\cloud_sim.exe
 
+- In the GUI, click `Start SJF` or `Start Priority`.
+
 - Console mode:
 
 ```bash
 cloud_sim.exe --console
+```
+
+- Console mode with Priority Scheduling:
+
+```bash
+cloud_sim.exe --console --priority
 ```
 
 
