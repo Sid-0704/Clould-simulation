@@ -20,20 +20,63 @@ static StepResult g_step_result;
 static int g_step_index = 0;
 static int g_finished = 0;
 static int g_simulation_started = 0;
+static int g_paused = 0;
 static HWND g_sjf_button = NULL;
 static HWND g_priority_button = NULL;
+static HWND g_start_pause_button = NULL;
+static HWND g_reset_button = NULL;
 
 enum {
     ID_BUTTON_SJF = 1001,
-    ID_BUTTON_PRIORITY = 1002
+    ID_BUTTON_PRIORITY = 1002,
+    ID_BUTTON_START_PAUSE = 1003,
+    ID_BUTTON_RESET = 1004
 };
 
 static void start_simulation(HWND hwnd) {
     g_step_index = 0;
     g_finished = 0;
+    g_paused = 0;
     g_simulation_started = 1;
     simulate_step(g_step_index, g_algorithm, &g_step_result);
+    if (g_start_pause_button != NULL) {
+        SetWindowTextA(g_start_pause_button, "Pause");
+    }
     SetTimer(hwnd, 1, 1200, NULL);
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
+static void pause_simulation(HWND hwnd) {
+    if (!g_simulation_started || g_finished) {
+        return;
+    }
+
+    if (!g_paused) {
+        g_paused = 1;
+        KillTimer(hwnd, 1);
+        if (g_start_pause_button != NULL) {
+            SetWindowTextA(g_start_pause_button, "Resume");
+        }
+    } else {
+        g_paused = 0;
+        if (g_start_pause_button != NULL) {
+            SetWindowTextA(g_start_pause_button, "Pause");
+        }
+        SetTimer(hwnd, 1, 1200, NULL);
+    }
+
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+
+static void reset_simulation(HWND hwnd) {
+    KillTimer(hwnd, 1);
+    g_step_index = 0;
+    g_finished = 0;
+    g_paused = 0;
+    g_simulation_started = 0;
+    if (g_start_pause_button != NULL) {
+        SetWindowTextA(g_start_pause_button, "Start / Pause");
+    }
     InvalidateRect(hwnd, NULL, TRUE);
 }
 #endif
@@ -69,33 +112,51 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_CREATE:
             g_simulation_started = 0;
             g_finished = 0;
-            g_sjf_button = CreateWindowA("BUTTON", "Start SJF", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                         12, 620, 150, 34, hwnd, (HMENU)ID_BUTTON_SJF, GetModuleHandle(NULL), NULL);
-            g_priority_button = CreateWindowA("BUTTON", "Start Priority", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                                               176, 620, 150, 34, hwnd, (HMENU)ID_BUTTON_PRIORITY, GetModuleHandle(NULL), NULL);
+            g_paused = 0;
+            g_sjf_button = CreateWindowA("BUTTON", "SJF", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                         12, 620, 110, 34, hwnd, (HMENU)ID_BUTTON_SJF, GetModuleHandle(NULL), NULL);
+            g_priority_button = CreateWindowA("BUTTON", "Priority", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                               132, 620, 110, 34, hwnd, (HMENU)ID_BUTTON_PRIORITY, GetModuleHandle(NULL), NULL);
+            g_start_pause_button = CreateWindowA("BUTTON", "Start / Pause", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                                 252, 620, 150, 34, hwnd, (HMENU)ID_BUTTON_START_PAUSE, GetModuleHandle(NULL), NULL);
+            g_reset_button = CreateWindowA("BUTTON", "Reset", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+                                           412, 620, 110, 34, hwnd, (HMENU)ID_BUTTON_RESET, GetModuleHandle(NULL), NULL);
             return 0;
 
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case ID_BUTTON_SJF:
                     g_algorithm = ALG_SJF;
-                    start_simulation(hwnd);
+                    InvalidateRect(hwnd, NULL, TRUE);
                     return 0;
                 case ID_BUTTON_PRIORITY:
                     g_algorithm = ALG_PRIORITY;
-                    start_simulation(hwnd);
+                    InvalidateRect(hwnd, NULL, TRUE);
+                    return 0;
+                case ID_BUTTON_START_PAUSE:
+                    if (!g_simulation_started || g_finished) {
+                        start_simulation(hwnd);
+                    } else {
+                        pause_simulation(hwnd);
+                    }
+                    return 0;
+                case ID_BUTTON_RESET:
+                    reset_simulation(hwnd);
                     return 0;
             }
             break;
 
         case WM_TIMER:
-            if (!g_finished) {
+            if (!g_finished && !g_paused) {
                 g_step_index++;
                 if (g_step_index < SIMULATION_TIME) {
                     simulate_step(g_step_index, g_algorithm, &g_step_result);
                 } else {
                     g_finished = 1;
                     KillTimer(hwnd, 1);
+                    if (g_start_pause_button != NULL) {
+                        SetWindowTextA(g_start_pause_button, "Start / Pause");
+                    }
                 }
                 InvalidateRect(hwnd, NULL, TRUE);
             }
@@ -115,10 +176,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (!g_simulation_started) {
                 TextOutA(hdc, 12, y, "Choose a scheduling algorithm to start the simulation.", 55);
                 y += 22;
-                TextOutA(hdc, 12, y, "Default: SJF", 13);
+                if (g_algorithm == ALG_SJF)
+                    TextOutA(hdc, 12, y, "Selected: SJF", 14);
+                else
+                    TextOutA(hdc, 12, y, "Selected: Priority", 19);
                 y += 24;
             } else if (g_finished) {
                 TextOutA(hdc, 12, y, "Simulation Finished", 19);
+                y += 24;
+            } else if (g_paused) {
+                snprintf(line, sizeof(line), "Paused at step %d", g_step_result.step + 1);
+                TextOutA(hdc, 12, y, line, (int)strlen(line));
+                y += 20;
+
+                if (g_step_result.algorithm == 0)
+                    TextOutA(hdc, 12, y, "Algorithm: SJF", 14);
+                else
+                    TextOutA(hdc, 12, y, "Algorithm: Priority", 19);
+
+                y += 24;
+                TextOutA(hdc, 12, y, "Simulation is paused. Click Resume to continue or Reset to restart.", 70);
                 y += 24;
             } else {
                 snprintf(line, sizeof(line), "Time Step: %d / %d", g_step_result.step + 1, SIMULATION_TIME);

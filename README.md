@@ -11,6 +11,7 @@ The program now supports both:
 - Console mode (terminal output)
 
 You can choose the scheduling algorithm in the GUI with buttons before the simulation starts.
+The GUI also includes separate `Start / Pause` and `Reset` buttons, so the control buttons do not overlap the algorithm selection buttons.
 
 You can also choose at startup in console mode:
 
@@ -33,7 +34,8 @@ Run
 - GUI mode (default):
 .\cloud_sim.exe
 
-- In the GUI, click `Start SJF` or `Start Priority`.
+- In the GUI, click `SJF` or `Priority` to select the algorithm, then use `Start / Pause` to run or pause the simulation.
+- Use `Reset` to clear the current run and return to the initial state.
 
 - Console mode:
 
