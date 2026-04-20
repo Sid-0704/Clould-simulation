@@ -21,6 +21,9 @@ static int g_step_index = 0;
 static int g_finished = 0;
 static int g_simulation_started = 0;
 static int g_paused = 0;
+static int g_history_steps = 0;
+static int g_accepted_history[SIMULATION_TIME];
+static int g_rejected_history[SIMULATION_TIME];
 static HWND g_sjf_button = NULL;
 static HWND g_priority_button = NULL;
 static HWND g_start_pause_button = NULL;
@@ -33,12 +36,40 @@ enum {
     ID_BUTTON_RESET = 1004
 };
 
+static void clear_history() {
+    g_history_steps = 0;
+    for (int i = 0; i < SIMULATION_TIME; i++) {
+        g_accepted_history[i] = 0;
+        g_rejected_history[i] = 0;
+    }
+}
+
+static void record_step_history(const StepResult *result) {
+    if (result == NULL) {
+        return;
+    }
+
+    if (result->step < 0 || result->step >= SIMULATION_TIME) {
+        return;
+    }
+
+    g_accepted_history[result->step] = result->accepted_tasks;
+    g_rejected_history[result->step] = result->rejected_tasks;
+
+    if (result->step + 1 > g_history_steps) {
+        g_history_steps = result->step + 1;
+    }
+}
+
 static void start_simulation(HWND hwnd) {
+    init_vms();
+    clear_history();
     g_step_index = 0;
     g_finished = 0;
     g_paused = 0;
     g_simulation_started = 1;
     simulate_step(g_step_index, g_algorithm, &g_step_result);
+    record_step_history(&g_step_result);
     if (g_start_pause_button != NULL) {
         SetWindowTextA(g_start_pause_button, "Pause");
     }
@@ -70,6 +101,8 @@ static void pause_simulation(HWND hwnd) {
 
 static void reset_simulation(HWND hwnd) {
     KillTimer(hwnd, 1);
+    init_vms();
+    clear_history();
     g_step_index = 0;
     g_finished = 0;
     g_paused = 0;
@@ -107,9 +140,69 @@ void draw_bar(HDC hdc, int x, int y, int w, int h, int used, int total, COLORREF
     DeleteObject(fill_brush);
 }
 
+void draw_performance_graph(HDC hdc, int x, int y, int w, int h) {
+    int max_points = g_history_steps;
+    int max_value = 1;
+    char label[128];
+
+    Rectangle(hdc, x, y, x + w, y + h);
+    TextOutA(hdc, x + 8, y + 6, "Performance Graph (Accepted vs Rejected)", 40);
+
+    for (int i = 0; i < max_points; i++) {
+        if (g_accepted_history[i] > max_value) {
+            max_value = g_accepted_history[i];
+        }
+        if (g_rejected_history[i] > max_value) {
+            max_value = g_rejected_history[i];
+        }
+    }
+
+    if (max_points > 0) {
+        HPEN accepted_pen = CreatePen(PS_SOLID, 2, RGB(30, 170, 80));
+        HPEN rejected_pen = CreatePen(PS_SOLID, 2, RGB(210, 70, 60));
+        HPEN old_pen = (HPEN)SelectObject(hdc, accepted_pen);
+        int graph_left = x + 10;
+        int graph_top = y + 30;
+        int graph_width = w - 20;
+        int graph_height = h - 44;
+
+        for (int i = 0; i < max_points; i++) {
+            int px = graph_left + (i * graph_width) / ((max_points > 1) ? (max_points - 1) : 1);
+            int py = graph_top + graph_height - (g_accepted_history[i] * graph_height) / max_value;
+            if (i == 0) {
+                MoveToEx(hdc, px, py, NULL);
+            } else {
+                LineTo(hdc, px, py);
+            }
+        }
+
+        SelectObject(hdc, rejected_pen);
+        for (int i = 0; i < max_points; i++) {
+            int px = graph_left + (i * graph_width) / ((max_points > 1) ? (max_points - 1) : 1);
+            int py = graph_top + graph_height - (g_rejected_history[i] * graph_height) / max_value;
+            if (i == 0) {
+                MoveToEx(hdc, px, py, NULL);
+            } else {
+                LineTo(hdc, px, py);
+            }
+        }
+
+        SelectObject(hdc, old_pen);
+        DeleteObject(accepted_pen);
+        DeleteObject(rejected_pen);
+    } else {
+        TextOutA(hdc, x + 10, y + 32, "Start simulation to generate graph data.", 40);
+    }
+
+    TextOutA(hdc, x + 12, y + h - 16, "Green: Accepted   Red: Rejected", 31);
+    snprintf(label, sizeof(label), "Steps recorded: %d", g_history_steps);
+    TextOutA(hdc, x + w - 130, y + h - 16, label, (int)strlen(label));
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_CREATE:
+            clear_history();
             g_simulation_started = 0;
             g_finished = 0;
             g_paused = 0;
@@ -151,6 +244,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 g_step_index++;
                 if (g_step_index < SIMULATION_TIME) {
                     simulate_step(g_step_index, g_algorithm, &g_step_result);
+                    record_step_history(&g_step_result);
                 } else {
                     g_finished = 1;
                     KillTimer(hwnd, 1);
@@ -243,9 +337,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             y += 18;
             events_rect.left = 12;
             events_rect.top = y;
-            events_rect.right = 760;
-            events_rect.bottom = 560;
+            events_rect.right = 420;
+            events_rect.bottom = 590;
             DrawTextA(hdc, g_step_result.events, -1, &events_rect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+
+            draw_performance_graph(hdc, 440, 250, 390, 340);
 
             EndPaint(hwnd, &ps);
             return 0;

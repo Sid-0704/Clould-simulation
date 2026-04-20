@@ -10,6 +10,8 @@ The program now supports both:
 - GUI mode (Windows window with live VM usage bars and events)
 - Console mode (terminal output)
 
+The GUI also shows a basic performance graph (Accepted vs Rejected tasks per time step) so you can quickly see how the selected algorithm performed over the run.
+
 You can choose the scheduling algorithm in the GUI with buttons before the simulation starts.
 The GUI also includes separate `Start / Pause` and `Reset` buttons, so the control buttons do not overlap the algorithm selection buttons.
 

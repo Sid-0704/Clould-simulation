@@ -61,9 +61,12 @@ int can_allocate(VM *vm, Task t) {
 // -----------------------------
 // Allocate Task
 // -----------------------------
-void allocate_task(VM *vm, Task t, char *events, size_t events_size) {
+void allocate_task(VM *vm, Task t, char *events, size_t events_size, int *accepted_count) {
     vm->used_cpu += t.cpu_req;
     vm->used_mem += t.mem_req;
+    if (accepted_count != NULL) {
+        (*accepted_count)++;
+    }
 
     appendf(events, events_size, "Task %d allocated to VM %d\n", t.id, vm->id);
 }
@@ -94,7 +97,7 @@ int task_size(Task t) {
     return t.cpu_req + t.mem_req;
 }
 
-void sjf_schedule(Task tasks[], int n, char *events, size_t events_size) {
+void sjf_schedule(Task tasks[], int n, char *events, size_t events_size, int *accepted_count, int *rejected_count) {
     // Sort tasks by smallest size
     for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
@@ -113,16 +116,20 @@ void sjf_schedule(Task tasks[], int n, char *events, size_t events_size) {
         int vm_index = find_best_vm(t);
 
         if (vm_index != -1)
-            allocate_task(&vms[vm_index], t, events, events_size);
-        else
+            allocate_task(&vms[vm_index], t, events, events_size, accepted_count);
+        else {
+            if (rejected_count != NULL) {
+                (*rejected_count)++;
+            }
             appendf(events, events_size, "Task %d rejected (SJF)\n", t.id);
+        }
     }
 }
 
 // -----------------------------
 // Priority Scheduling
 // -----------------------------
-void priority_schedule(Task tasks[], int n, char *events, size_t events_size) {
+void priority_schedule(Task tasks[], int n, char *events, size_t events_size, int *accepted_count, int *rejected_count) {
     // Sort by highest priority first
     for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
@@ -141,9 +148,13 @@ void priority_schedule(Task tasks[], int n, char *events, size_t events_size) {
         int vm_index = find_best_vm(t);
 
         if (vm_index != -1)
-            allocate_task(&vms[vm_index], t, events, events_size);
-        else
+            allocate_task(&vms[vm_index], t, events, events_size, accepted_count);
+        else {
+            if (rejected_count != NULL) {
+                (*rejected_count)++;
+            }
             appendf(events, events_size, "Task %d rejected (Priority)\n", t.id);
+        }
     }
 }
 
@@ -185,6 +196,8 @@ void simulate_step(int step, SchedulingAlgorithm algorithm, StepResult *result) 
     result->step = step;
     result->algorithm = algorithm;
     result->task_count = rand() % 5 + 1;
+    result->accepted_tasks = 0;
+    result->rejected_tasks = 0;
     result->events[0] = '\0';
 
     for (int i = 0; i < result->task_count; i++) {
@@ -193,9 +206,9 @@ void simulate_step(int step, SchedulingAlgorithm algorithm, StepResult *result) 
     }
 
     if (result->algorithm == ALG_SJF)
-        sjf_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
+        sjf_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events), &result->accepted_tasks, &result->rejected_tasks);
     else
-        priority_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events));
+        priority_schedule(sched_tasks, result->task_count, result->events, sizeof(result->events), &result->accepted_tasks, &result->rejected_tasks);
 
     release_resources();
 }

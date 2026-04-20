@@ -27,6 +27,8 @@ typedef struct {
     int algorithm; /* 0 = SJF, 1 = Priority */
     Task tasks[MAX_TASKS];
     int task_count;
+    int accepted_tasks;
+    int rejected_tasks;
     char events[2048];
 } StepResult;
 
@@ -41,11 +43,11 @@ extern int vm_count;
 void init_vms();
 Task generate_task(int id);
 int can_allocate(VM *vm, Task t);
-void allocate_task(VM *vm, Task t, char *events, size_t events_size);
+void allocate_task(VM *vm, Task t, char *events, size_t events_size, int *accepted_count);
 int find_best_vm(Task t);
 int task_size(Task t);
-void sjf_schedule(Task tasks[], int n, char *events, size_t events_size);
-void priority_schedule(Task tasks[], int n, char *events, size_t events_size);
+void sjf_schedule(Task tasks[], int n, char *events, size_t events_size, int *accepted_count, int *rejected_count);
+void priority_schedule(Task tasks[], int n, char *events, size_t events_size, int *accepted_count, int *rejected_count);
 void release_resources();
 void print_status();
 void simulate_step(int step, SchedulingAlgorithm algorithm, StepResult *result);
